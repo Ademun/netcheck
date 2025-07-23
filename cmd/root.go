@@ -15,13 +15,17 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "netcheck",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+	Short: "A minimalist TCP port scanner with parallel scanning and range support",
+	Long: `netcheck performs fast TCP port scanning. Key features:
+• Parallel scanning with configurable concurrency
+• Flexible port specification (80,443,1000-2000)
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+Examples:
+  Scan web ports: netcheck -p 80,443,8080 example.com
+  Scan range:     netcheck -p 22-100 example.com
+  Full scan:      netcheck example.com -v
+
+Use only on networks you own or have explicit permission to scan!`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 || args[0] == "" {
 			fmt.Println("please provide an ip or domain name")
