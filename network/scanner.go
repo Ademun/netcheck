@@ -1,11 +1,9 @@
 package network
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"net"
-	"strings"
 	"sync"
 	"time"
 )
@@ -80,20 +78,16 @@ func scanConn(ctx context.Context, out chan Result, protocol string, target stri
 		}
 	}
 	defer conn.Close()
-	conn.SetReadDeadline(time.Now().Add(time.Second * 1))
-	if port == "80" || port == "443" || port == "8080" || port == "8443" {
-		fmt.Fprintf(conn, "HEAD / HTTP/1.0\r\n\r\n")
-	}
-	reader := bufio.NewReader(conn)
-	banner, err := reader.ReadString('\n')
+	service := DetectService(conn, port)
 	select {
 	case <-ctx.Done():
 		return
 	default:
 		if err != nil {
+			fmt.Println(err)
 			out <- Result{Port: port, Status: OPEN}
 			return
 		}
-		out <- Result{Port: port, Status: OPEN, Banners: strings.TrimSpace(banner)}
+		out <- Result{Port: port, Status: OPEN, Banners: service.Name}
 	}
 }
