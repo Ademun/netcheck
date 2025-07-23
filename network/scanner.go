@@ -7,12 +7,13 @@ import (
 	"time"
 )
 
+// Possible port states
 type PortStatus int
 
 const (
-	OPEN PortStatus = iota
-	FILTERED
-	CLOSED
+	OPEN     PortStatus = iota //Available and accepting connections
+	FILTERED                   //Filtered by firewall (no response)
+	CLOSED                     //Available but not accepting connections
 )
 
 func (p PortStatus) String() string {
@@ -27,6 +28,7 @@ func (p PortStatus) String() string {
 	return "unknown"
 }
 
+// Port scan result
 type Result struct {
 	Port   string
 	Status PortStatus
@@ -43,12 +45,12 @@ func ScanHost(target string, ports []string) []Result {
 
 	wg.Add(len(ports))
 	for _, p := range ports {
-		go func() {
+		go func(port string) {
 			defer wg.Done()
 			semaphore <- struct{}{}
-			scanConn(ctx, out, "tcp", target, p)
+			scanConn(ctx, out, "tcp", target, port)
 			<-semaphore
-		}()
+		}(p)
 	}
 	go func() {
 		wg.Wait()
