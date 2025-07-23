@@ -114,16 +114,20 @@ func manageReport(output string, target string, results []network.Result, start 
 	report := &reports.Report{Metadata: metadata, Results: results}
 	switch output {
 	case "json":
-		if err := report.SaveJSON(); err != nil {
-			fmt.Println(err)
+		path, err := report.SaveJSON()
+		if err != nil {
+			fmt.Println("JSON export failed:", err)
 			os.Exit(1)
 		}
+		fmt.Println("JSON report saved to", path)
 
 	case "csv":
-		if err := report.SaveCSV(); err != nil {
-			fmt.Println(err)
+		path, err := report.SaveCSV()
+		if err != nil {
+			fmt.Println("CSV export failed:", err)
 			os.Exit(1)
 		}
+		fmt.Println("CSV report saved to", path)
 
 	}
 }

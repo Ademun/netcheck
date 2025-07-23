@@ -26,6 +26,15 @@ netcheck example.com -o json
 # CSV report
 netcheck example.com -o csv
 ```
+Report files are automatically named using the timestamp pattern YYYY-MM-DD HH-MM.format
+
+**Key features:**
+
+- Preserves all scan metadata (target, timestamps, scanner version)
+
+- Retains service banners and port statuses
+
+- Compatible with SIEM systems and data analysis tools
 
 ## Installation
 
