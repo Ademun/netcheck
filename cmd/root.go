@@ -1,16 +1,16 @@
 /*
 Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-
 */
 package cmd
 
 import (
+	"fmt"
 	"os"
+	"slices"
 
+	"github.com/ademun/netcheck/network"
 	"github.com/spf13/cobra"
 )
-
-
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -22,13 +22,30 @@ examples and usage of using your application. For example:
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) == 0 || args[0] == "" {
+			fmt.Println("please provide an ip or domain name")
+			return
+		}
+		ip := args[0]
+
+		ports, err := cmd.Flags().GetString("ports")
+		if err != nil {
+			fmt.Println(err)
+		}
+		fmt.Printf("Scanning %s ports on %s target\n", ip, ports)
+		scanResult := network.ScanHost(ip, network.SplitPorts(ports))
+		slices.SortFunc(scanResult, func(a network.Result, b network.Result) int {
+			p1, p2 := network.ConvPort(a.Port), network.ConvPort(b.Port)
+			return p1 - p2
+		})
+		fmt.Println("PORT\tSTATE")
+		for _, r := range scanResult {
+			fmt.Printf("%s\t%s\n", r.Port, r.Status)
+		}
+	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
@@ -37,15 +54,5 @@ func Execute() {
 }
 
 func init() {
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
-
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.netcheck.yaml)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	rootCmd.Flags().StringP("ports", "p", "", "Ports to scan")
 }
-
-
