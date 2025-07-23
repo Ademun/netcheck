@@ -23,15 +23,16 @@ type Metadata struct {
 }
 
 func (r *Report) SaveJSON() (string, error) {
-	data, err := json.MarshalIndent(r, "", "\t")
+	filename := time.Now().Local().Format("2006-01-02 15-04") + ".json"
+
+	file, err := os.Create(filename)
 	if err != nil {
 		return "", err
 	}
 
-	filename := time.Now().Local().Format("2006-01-02 15-04") + ".json"
-	if err := os.WriteFile(filename, data, 0644); err != nil {
-		return "", err
-	}
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "\t")
+	encoder.Encode(r)
 
 	return filename, nil
 }
