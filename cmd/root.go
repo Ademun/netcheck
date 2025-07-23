@@ -33,12 +33,15 @@ to quickly create a Cobra application.`,
 		if err != nil {
 			fmt.Println(err)
 		}
+		if ports == "" {
+			ports = "-"
+		}
 		v, err := cmd.Flags().GetBool("verbose")
 		if err != nil {
 			fmt.Println(err)
 		}
 
-		fmt.Printf("Scanning %s ports on %s target\n", ip, ports)
+		fmt.Printf("Scanning %s ports on %s target\n", ports, ip)
 		scanResult := network.ScanHost(ip, network.SplitPorts(ports))
 		slices.SortFunc(scanResult, func(a network.Result, b network.Result) int {
 			p1, p2 := network.ConvPort(a.Port), network.ConvPort(b.Port)
