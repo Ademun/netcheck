@@ -7,9 +7,29 @@ import (
 	"time"
 )
 
+type PortStatus int
+
+const (
+	OPEN PortStatus = iota
+	FILTERED
+	CLOSED
+)
+
+func (p PortStatus) String() string {
+	switch p {
+	case OPEN:
+		return "open"
+	case FILTERED:
+		return "filtered"
+	case CLOSED:
+		return "closed"
+	}
+	return "unknown"
+}
+
 type Result struct {
 	Port   string
-	Status string
+	Status PortStatus
 }
 
 func ScanHost(target string, ports []string) []Result {
@@ -49,9 +69,9 @@ func scanConn(ctx context.Context, out chan Result, protocol string, target stri
 		return
 	default:
 		if err != nil {
-			out <- Result{Port: port, Status: "closed"}
+			out <- Result{Port: port, Status: CLOSED}
 			return
 		}
-		out <- Result{Port: port, Status: "open"}
+		out <- Result{Port: port, Status: OPEN}
 	}
 }
