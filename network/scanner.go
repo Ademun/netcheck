@@ -29,6 +29,10 @@ func (p PortStatus) String() string {
 	return "unknown"
 }
 
+func (p PortStatus) MarshalText() ([]byte, error) {
+	return []byte(p.String()), nil
+}
+
 // Port scan result
 type Result struct {
 	Port    string

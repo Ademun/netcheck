@@ -22,21 +22,22 @@ type Metadata struct {
 	Scanner   string
 }
 
-func (r *Report) SaveJSON() error {
-	data, err := json.MarshalIndent(r, "", "\t")
-	if err != nil {
-		return err
-	}
-
+func (r *Report) SaveJSON() (string, error) {
 	filename := time.Now().Local().Format("2006-01-02 15-04") + ".json"
-	if err := os.WriteFile(filename, data, 0644); err != nil {
-		return err
+
+	file, err := os.Create(filename)
+	if err != nil {
+		return "", err
 	}
 
-	return nil
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "\t")
+	encoder.Encode(r)
+
+	return filename, nil
 }
 
-func (r *Report) SaveCSV() error {
+func (r *Report) SaveCSV() (string, error) {
 	data := [][]string{
 		{
 			"Target " + r.Metadata.Target,
@@ -59,14 +60,14 @@ func (r *Report) SaveCSV() error {
 
 	file, err := os.Create(filename)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer file.Close()
 	writer := csv.NewWriter(file)
 	for _, record := range data {
 		if err := writer.Write(record); err != nil {
-			return err
+			return "", err
 		}
 	}
-	return nil
+	return filename, nil
 }

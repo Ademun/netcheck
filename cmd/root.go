@@ -8,8 +8,10 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/ademun/netcheck/network"
+	"github.com/ademun/netcheck/reports"
 	"github.com/spf13/cobra"
 )
 
@@ -32,25 +34,39 @@ Use only on networks you own or have explicit permission to scan!`,
 			fmt.Println("please provide an ip or domain name")
 			os.Exit(1)
 		}
-		ip := args[0]
 
 		ports, err := cmd.Flags().GetString("ports")
 		if err != nil {
 			fmt.Println(err)
-		}
-		if ports == "" {
-			ports = "-"
+			os.Exit(1)
 		}
 		v, err := cmd.Flags().GetBool("verbose")
 		if err != nil {
 			fmt.Println(err)
+			os.Exit(1)
 		}
+		out, err := cmd.Flags().GetString("output")
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		ip := args[0]
+		if ports == "" {
+			ports = "-"
+		}
+
+		start := time.Now()
+
 		scanResults := network.ScanHost(ip, network.SplitPorts(ports))
 		slices.SortFunc(scanResults, func(a network.Result, b network.Result) int {
 			p1, p2 := network.ConvPort(a.Port), network.ConvPort(b.Port)
 			return p1 - p2
 		})
-		printReport(scanResults, v)
+
+		end := time.Now()
+		print(scanResults, v)
+		manageReport(out, ip, scanResults, start, end)
 	},
 }
 
@@ -64,9 +80,10 @@ func Execute() {
 func init() {
 	rootCmd.Flags().StringP("ports", "p", "", "Ports to scan")
 	rootCmd.Flags().BoolP("verbose", "v", false, "Lists closed ports")
+	rootCmd.Flags().StringP("output", "o", "", "Saves report to file: json | csv")
 }
 
-func printReport(results []network.Result, verbose bool) {
+func print(results []network.Result, verbose bool) {
 	slices.SortFunc(results, func(a, b network.Result) int {
 		return network.ConvPort(a.Port) - network.ConvPort(b.Port)
 	})
@@ -89,5 +106,28 @@ func printResults(results []network.Result, verbose bool) {
 		port := fmt.Sprintf("%-5s", r.Port)
 		status := fmt.Sprintf("%-7s", ColorizePortStatus(r.Status))
 		fmt.Printf("%s\t%s\t%s\n", port, status, r.Banners)
+	}
+}
+
+func manageReport(output string, target string, results []network.Result, start time.Time, end time.Time) {
+	metadata := &reports.Metadata{Target: target, StartTime: start, EndTime: end, Total: end.Sub(start).String(), Scanner: "netcheck 1.0"}
+	report := &reports.Report{Metadata: metadata, Results: results}
+	switch output {
+	case "json":
+		path, err := report.SaveJSON()
+		if err != nil {
+			fmt.Println("JSON export failed:", err)
+			os.Exit(1)
+		}
+		fmt.Println("JSON report saved to", path)
+
+	case "csv":
+		path, err := report.SaveCSV()
+		if err != nil {
+			fmt.Println("CSV export failed:", err)
+			os.Exit(1)
+		}
+		fmt.Println("CSV report saved to", path)
+
 	}
 }

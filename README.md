@@ -11,6 +11,31 @@
 - 🔢 Port range support (`80,443,1000-2000`)
 - ⚡ Parallel scanning with thread limiting
 
+## Report Export
+
+The tool supports exporting scan results in multiple formats for further analysis:
+
+- **JSON**: Structured format for programmatic processing
+- **CSV**: Tabular format for spreadsheets and databases
+
+To generate reports:
+```bash
+# JSON report
+netcheck example.com -o json
+
+# CSV report
+netcheck example.com -o csv
+```
+Report files are automatically named using the timestamp pattern YYYY-MM-DD HH-MM.format
+
+**Key features:**
+
+- Preserves all scan metadata (target, timestamps, scanner version)
+
+- Retains service banners and port statuses
+
+- Compatible with SIEM systems and data analysis tools
+
 ## Installation
 
 1. Clone the repository:
@@ -67,7 +92,6 @@ Planned improvements:
 - Implement SYN scanning
 - Add UDP protocol support
 - Service version detection
-- JSON/XML result export
 - Configurable timeouts via flags
 
 ## License
