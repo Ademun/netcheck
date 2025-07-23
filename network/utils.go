@@ -49,7 +49,7 @@ func portsFromRange(ran string) []string {
 
 func ConvPort(port string) int {
 	v, err := strconv.ParseInt(port, 10, 32)
-	if err != nil {
+	if err != nil || v < 0 || v > 65535 {
 		return -1
 	}
 	return int(v)
