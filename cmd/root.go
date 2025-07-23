@@ -33,6 +33,11 @@ to quickly create a Cobra application.`,
 		if err != nil {
 			fmt.Println(err)
 		}
+		v, err := cmd.Flags().GetBool("verbose")
+		if err != nil {
+			fmt.Println(err)
+		}
+
 		fmt.Printf("Scanning %s ports on %s target\n", ip, ports)
 		scanResult := network.ScanHost(ip, network.SplitPorts(ports))
 		slices.SortFunc(scanResult, func(a network.Result, b network.Result) int {
@@ -41,6 +46,9 @@ to quickly create a Cobra application.`,
 		})
 		fmt.Println("PORT\tSTATE")
 		for _, r := range scanResult {
+			if !v && r.Status == network.CLOSED {
+				continue
+			}
 			fmt.Printf("%s\t%s\n", r.Port, r.Status)
 		}
 	},
@@ -55,4 +63,5 @@ func Execute() {
 
 func init() {
 	rootCmd.Flags().StringP("ports", "p", "", "Ports to scan")
+	rootCmd.Flags().BoolP("verbose", "v", false, "Lists closed ports")
 }
