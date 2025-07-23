@@ -47,12 +47,12 @@ to quickly create a Cobra application.`,
 			p1, p2 := network.ConvPort(a.Port), network.ConvPort(b.Port)
 			return p1 - p2
 		})
-		fmt.Println("PORT\tSTATE")
+		fmt.Println("PORT\tSTATE\tSERVICE")
 		for _, r := range scanResult {
 			if !v && r.Status == network.CLOSED {
 				continue
 			}
-			fmt.Printf("%s\t%s\n", r.Port, r.Status)
+			fmt.Printf("%s\t%s\t%s\n", r.Port, r.Status, r.Banners)
 		}
 	},
 }

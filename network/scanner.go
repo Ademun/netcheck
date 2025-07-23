@@ -1,8 +1,11 @@
 package network
 
 import (
+	"bufio"
 	"context"
+	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -28,8 +31,9 @@ func (p PortStatus) String() string {
 }
 
 type Result struct {
-	Port   string
-	Status PortStatus
+	Port    string
+	Status  PortStatus
+	Banners string
 }
 
 func ScanHost(target string, ports []string) []Result {
@@ -63,7 +67,7 @@ func ScanHost(target string, ports []string) []Result {
 
 func scanConn(ctx context.Context, out chan Result, protocol string, target string, port string) {
 	address := net.JoinHostPort(target, port)
-	_, err := net.DialTimeout(protocol, address, time.Second*10)
+	conn, err := net.DialTimeout(protocol, address, time.Second*10)
 	select {
 	case <-ctx.Done():
 		return
@@ -72,6 +76,22 @@ func scanConn(ctx context.Context, out chan Result, protocol string, target stri
 			out <- Result{Port: port, Status: CLOSED}
 			return
 		}
-		out <- Result{Port: port, Status: OPEN}
+	}
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(time.Second * 1))
+	if port == "80" || port == "443" || port == "8080" || port == "8443" {
+		fmt.Fprintf(conn, "HEAD / HTTP/1.0\r\n\r\n")
+	}
+	reader := bufio.NewReader(conn)
+	banner, err := reader.ReadString('\n')
+	select {
+	case <-ctx.Done():
+		return
+	default:
+		if err != nil {
+			out <- Result{Port: port, Status: OPEN}
+			return
+		}
+		out <- Result{Port: port, Status: OPEN, Banners: strings.TrimSpace(banner)}
 	}
 }
