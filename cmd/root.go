@@ -80,7 +80,7 @@ func Execute() {
 func init() {
 	rootCmd.Flags().StringP("ports", "p", "", "Ports to scan")
 	rootCmd.Flags().BoolP("verbose", "v", false, "Lists closed ports")
-	rootCmd.Flags().StringP("output", "o", "", "Saves report to file: json | csv | xml")
+	rootCmd.Flags().StringP("output", "o", "", "Saves report to file: json | csv")
 }
 
 func print(results []network.Result, verbose bool) {
@@ -110,13 +110,20 @@ func printResults(results []network.Result, verbose bool) {
 }
 
 func manageReport(output string, target string, results []network.Result, start time.Time, end time.Time) {
+	metadata := &reports.Metadata{Target: target, StartTime: start, EndTime: end, Total: end.Sub(start).String(), Scanner: "netcheck 1.0"}
+	report := &reports.Report{Metadata: metadata, Results: results}
 	switch output {
 	case "json":
-		metadata := &reports.Metadata{Target: target, StartTime: start, EndTime: end, Total: end.Sub(start).String(), Scanner: "netcheck 1.0"}
-		report := &reports.JSONReport{Metadata: metadata, Results: results}
-		if err := report.Save(); err != nil {
+		if err := report.SaveJSON(); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+
+	case "csv":
+		if err := report.SaveCSV(); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
 	}
 }
