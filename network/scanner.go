@@ -43,9 +43,9 @@ func ScanHost(target string, ports []string) []Result {
 
 	wg.Add(len(ports))
 	for _, p := range ports {
-		semaphore <- struct{}{}
 		go func() {
 			defer wg.Done()
+			semaphore <- struct{}{}
 			scanConn(ctx, out, "tcp", target, p)
 			<-semaphore
 		}()

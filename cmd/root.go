@@ -25,7 +25,7 @@ to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 || args[0] == "" {
 			fmt.Println("please provide an ip or domain name")
-			return
+			os.Exit(1)
 		}
 		ip := args[0]
 
