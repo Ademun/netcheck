@@ -1,8 +1,8 @@
-package main
+package cmd
 
 import "github.com/ademun/netcheck/network"
 
-func colorizeStatus(status network.PortStatus) string {
+func ColorizePortStatus(status network.PortStatus) string {
 	switch status {
 	case network.OPEN:
 		return "\033[32mopen\033[0m"

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 
 	"github.com/ademun/netcheck/network"
 	"github.com/spf13/cobra"
@@ -44,20 +45,12 @@ Use only on networks you own or have explicit permission to scan!`,
 		if err != nil {
 			fmt.Println(err)
 		}
-
-		fmt.Printf("Scanning %s ports on %s target\n", ports, ip)
-		scanResult := network.ScanHost(ip, network.SplitPorts(ports))
-		slices.SortFunc(scanResult, func(a network.Result, b network.Result) int {
+		scanResults := network.ScanHost(ip, network.SplitPorts(ports))
+		slices.SortFunc(scanResults, func(a network.Result, b network.Result) int {
 			p1, p2 := network.ConvPort(a.Port), network.ConvPort(b.Port)
 			return p1 - p2
 		})
-		fmt.Println("PORT\tSTATE\tSERVICE")
-		for _, r := range scanResult {
-			if !v && r.Status == network.CLOSED {
-				continue
-			}
-			fmt.Printf("%s\t%s\t%s\n", r.Port, r.Status, r.Banners)
-		}
+		printReport(scanResults, v)
 	},
 }
 
@@ -71,4 +64,30 @@ func Execute() {
 func init() {
 	rootCmd.Flags().StringP("ports", "p", "", "Ports to scan")
 	rootCmd.Flags().BoolP("verbose", "v", false, "Lists closed ports")
+}
+
+func printReport(results []network.Result, verbose bool) {
+	slices.SortFunc(results, func(a, b network.Result) int {
+		return network.ConvPort(a.Port) - network.ConvPort(b.Port)
+	})
+
+	fmt.Println("\n" + strings.Repeat("═", 30))
+	fmt.Printf("NETCHECK SCAN REPORT (scanned %d port(s))\n", len(results))
+	fmt.Println(strings.Repeat("═", 30))
+
+	printResults(results, verbose)
+	fmt.Println("\n" + strings.Repeat("═", 30))
+}
+
+func printResults(results []network.Result, verbose bool) {
+	fmt.Println("PORT\tSTATE\tSERVICE")
+
+	for _, r := range results {
+		if !verbose && r.Status == network.CLOSED {
+			continue
+		}
+		port := fmt.Sprintf("%-5s", r.Port)
+		status := fmt.Sprintf("%-7s", ColorizePortStatus(r.Status))
+		fmt.Printf("%s\t%s\t%s\n", port, status, r.Banners)
+	}
 }

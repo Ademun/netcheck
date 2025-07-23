@@ -2,8 +2,8 @@ package network
 
 import (
 	"context"
-	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -73,7 +73,11 @@ func scanConn(ctx context.Context, out chan Result, protocol string, target stri
 		return
 	default:
 		if err != nil {
-			out <- Result{Port: port, Status: CLOSED}
+			if isConnectionRefused(err) {
+				out <- Result{Port: port, Status: CLOSED}
+				return
+			}
+			out <- Result{Port: port, Status: FILTERED}
 			return
 		}
 	}
@@ -82,12 +86,10 @@ func scanConn(ctx context.Context, out chan Result, protocol string, target stri
 	select {
 	case <-ctx.Done():
 		return
-	default:
-		if err != nil {
-			fmt.Println(err)
-			out <- Result{Port: port, Status: OPEN}
-			return
-		}
-		out <- Result{Port: port, Status: OPEN, Banners: service.Name}
+	case out <- Result{Port: port, Status: OPEN, Banners: service.Name}:
 	}
+}
+
+func isConnectionRefused(err error) bool {
+	return strings.Contains(err.Error(), "connectex")
 }
