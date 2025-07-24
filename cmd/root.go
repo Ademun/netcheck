@@ -58,7 +58,8 @@ Use only on networks you own or have explicit permission to scan!`,
 
 		start := time.Now()
 
-		scanResults := network.ScanHost(ip, network.SplitPorts(ports))
+		scanner := &network.TCPScanner{}
+		scanResults := scanner.ScanHost(ip, network.SplitPorts(ports))
 		slices.SortFunc(scanResults, func(a network.Result, b network.Result) int {
 			p1, p2 := network.ConvPort(a.Port), network.ConvPort(b.Port)
 			return p1 - p2
