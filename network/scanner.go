@@ -45,7 +45,7 @@ func ScanHost(target string, ports []string) []Result {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	semaphore := make(chan struct{}, 100)
+	semaphore := make(chan struct{}, 500)
 	out := make(chan Result)
 	wg := &sync.WaitGroup{}
 
@@ -54,7 +54,7 @@ func ScanHost(target string, ports []string) []Result {
 		go func(port string) {
 			defer wg.Done()
 			semaphore <- struct{}{}
-			scanConn(ctx, out, "tcp", target, port)
+			tcpScanPort(ctx, out, "tcp", target, port)
 			<-semaphore
 		}(p)
 	}
@@ -69,9 +69,9 @@ func ScanHost(target string, ports []string) []Result {
 	return results
 }
 
-func scanConn(ctx context.Context, out chan Result, protocol string, target string, port string) {
+func tcpScanPort(ctx context.Context, out chan Result, protocol string, target string, port string) {
 	address := net.JoinHostPort(target, port)
-	conn, err := net.DialTimeout(protocol, address, time.Second*10)
+	conn, err := net.DialTimeout(protocol, address, time.Second*5)
 	select {
 	case <-ctx.Done():
 		return
