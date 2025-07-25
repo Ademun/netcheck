@@ -104,7 +104,7 @@ func printResults(results []network.Result, verbose bool) {
 			continue
 		}
 		port := fmt.Sprintf("%-5s", r.Port)
-		status := fmt.Sprintf("%-7s", ColorizePortStatus(r.Status))
+		status := fmt.Sprintf("%-7s", r.Status)
 		fmt.Printf("%s\t%s\t%s\n", port, status, r.Banners)
 	}
 }
