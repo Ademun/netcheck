@@ -3,6 +3,8 @@
 ![Go Version](https://img.shields.io/badge/go-1.18%2B-blue)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+[Версия на русском](https://github.com/Ademun/netcheck/blob/main/README.ru.md)
+
 `netcheck` is a minimalist network port scanner implementing basic TCP scanning functionality. Created for educational purposes and to demonstrate network programming principles in Go.
 
 ## Features
