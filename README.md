@@ -48,7 +48,7 @@ Report files are automatically named using the timestamp pattern YYYY-MM-DD HH-M
 
 2. Build the binary:
    ```bash
-   go build -o netcheck cmd/main.go
+   go build
    ```
 
 
