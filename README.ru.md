@@ -47,7 +47,7 @@ netcheck example.com -o csv
     ```
 2. Соберите бинарный файл:
     ```bash
-    go build -o netcheck cmd/main.go
+    go build
     ```
 
 
