@@ -42,12 +42,12 @@ netcheck example.com -o csv
 
 1. Клонируйте репозиторий:
     ```bash
-    git clone https://github.com/yourusername/netcheck.git
+    git clone https://github.com/Ademun/netcheck.git
     cd netcheck
     ```
 2. Соберите бинарный файл:
     ```bash
-    go build -o netcheck cmd/main.go
+    go build
     ```
 
 
