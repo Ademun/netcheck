@@ -42,7 +42,7 @@ Report files are automatically named using the timestamp pattern YYYY-MM-DD HH-M
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/netcheck.git
+   git clone https://github.com/Ademun/netcheck.git
    cd netcheck
    ```
 
