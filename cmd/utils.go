@@ -1,16 +1,19 @@
 package cmd
 
-import "github.com/ademun/netcheck/network"
+import (
+	"os"
+	"os/exec"
+	"runtime"
+)
 
-func ColorizePortStatus(status network.PortStatus) string {
-	switch status {
-	case network.OPEN:
-		return "\033[32mopen\033[0m"
-	case network.FILTERED:
-		return "\033[33mfiltered\033[0m"
-	case network.CLOSED:
-		return "\033[90mclosed\033[0m"
+func ClearScreen() {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "cls") // For Windows
 	default:
-		return "unknown"
+		cmd = exec.Command("clear") // For Linux/macOS
 	}
+	cmd.Stdout = os.Stdout
+	cmd.Run()
 }

@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -44,7 +45,7 @@ type Result struct {
 	Banners string
 }
 
-func ScanHost(target string, ports []string) []Result {
+func ScanHost(target string, ports []string, progress *atomic.Int32) []Result {
 	results := make([]Result, 0, len(ports))
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -59,6 +60,7 @@ func ScanHost(target string, ports []string) []Result {
 			defer wg.Done()
 			semaphore <- struct{}{}
 			scanConn(ctx, out, "tcp", target, port)
+			progress.Add(1)
 			<-semaphore
 		}(p)
 	}
@@ -82,7 +84,7 @@ func scanConn(ctx context.Context, out chan Result, protocol string, target stri
 
 func tcpScan(ctx context.Context, out chan Result, target string, port string) {
 	address := net.JoinHostPort(target, port)
-	conn, err := net.DialTimeout("tcp", address, time.Second*10)
+	conn, err := net.DialTimeout("tcp", address, time.Second*2)
 	select {
 	case <-ctx.Done():
 		return

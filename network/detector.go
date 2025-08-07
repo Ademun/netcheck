@@ -1,8 +1,9 @@
 package network
 
 import (
-	"bufio"
 	"crypto/tls"
+	"errors"
+	"io"
 	"net"
 	"time"
 )
@@ -106,9 +107,9 @@ var defaultServices = map[string]string{
 
 var serviceMessager = map[string]func(net.Conn){
 	"22":   sshMessager,
-	"80":   httpsMessager,
+	"80":   httpMessager,
 	"443":  httpsMessager,
-	"8080": httpsMessager,
+	"8080": httpMessager,
 	"8443": httpsMessager,
 }
 
@@ -119,14 +120,24 @@ type Service struct {
 
 func DetectService(conn net.Conn, port string) Service {
 	conn.SetReadDeadline(time.Now().Add(time.Second * 2))
-	if msg, ok := serviceMessager[port]; ok {
+	msg, ok := serviceMessager[port]
+	if !ok {
+		conn.Write([]byte{0x00})
+	} else {
 		msg(conn)
 	}
-	banner, err := bufio.NewReader(conn).ReadString('\n')
-	if err != nil {
+
+	buf := make([]byte, 1024)
+	_, err := conn.Read(buf)
+	if err != nil && !errors.Is(err, io.EOF) {
 		return Service{Name: defaultServices[port], Version: "unknown"}
 	}
-	return Service{Name: banner, Version: "todo"}
+	//TODO: implement service name and version extraction
+	return Service{Name: "todo", Version: "todo"}
+}
+
+func httpMessager(conn net.Conn) {
+	conn.Write([]byte("HEAD / HTTP/1.0\r\nHost:netcheck.com\r\nUser-Agent: netcheck\r\nAccept: */*\r\n\r\n"))
 }
 
 func sshMessager(conn net.Conn) {
@@ -136,5 +147,5 @@ func sshMessager(conn net.Conn) {
 func httpsMessager(conn net.Conn) {
 	tlsConn := tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
 	tlsConn.Handshake()
-	tlsConn.Write([]byte("HEAD / HTTP/1.0\r\n\r\n"))
+	tlsConn.Write([]byte("HEAD / HTTP/1.0\r\nHost:netcheck.com\r\nUser-Agent: netcheck\r\nAccept: */*\r\n\r\n"))
 }

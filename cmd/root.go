@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ademun/netcheck/network"
@@ -58,8 +59,20 @@ Use only on networks you own or have explicit permission to scan!`,
 
 		start := time.Now()
 
-		scanner := &network.TCPScanner{}
-		scanResults := scanner.ScanHost(ip, network.SplitPorts(ports))
+		progress := atomic.Int32{}
+		splitPorts := network.SplitPorts(ports)
+
+		/*go func() {
+			for {
+				if progress.Load() == int32(len(splitPorts)) {
+					break
+				}
+				fmt.Printf("Scanned %d/%d ports\n", progress.Load(), len(splitPorts))
+				ClearScreen()
+			}
+		}()*/
+
+		scanResults := network.ScanHost(ip, splitPorts, &progress)
 		slices.SortFunc(scanResults, func(a network.Result, b network.Result) int {
 			p1, p2 := network.ConvPort(a.Port), network.ConvPort(b.Port)
 			return p1 - p2
@@ -101,11 +114,11 @@ func printResults(results []network.Result, verbose bool) {
 	fmt.Println("PORT\tSTATE\tSERVICE")
 
 	for _, r := range results {
-		if !verbose && r.Status == network.CLOSED {
+		if !verbose && r.Status != network.OPEN {
 			continue
 		}
 		port := fmt.Sprintf("%-5s", r.Port)
-		status := fmt.Sprintf("%-7s", ColorizePortStatus(r.Status))
+		status := fmt.Sprintf("%-7s", r.Status)
 		fmt.Printf("%s\t%s\t%s\n", port, status, r.Banners)
 	}
 }
