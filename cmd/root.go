@@ -58,7 +58,7 @@ Use only on networks you own or have explicit permission to scan!`,
 			ports = "-"
 		}
 
-		utils.FindInterfaceIdxForAddr("192.168.1.0/24")
+		utils.GetHostsFromSubnet("192.168.1.0/24")
 
 		start := time.Now()
 

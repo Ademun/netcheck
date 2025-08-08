@@ -3,11 +3,10 @@ package utils
 import (
 	"fmt"
 	"net"
-	"strings"
 )
 
 func FindInterfaceIdxForAddr(target string) (int, error) {
-	targetIP, targetNet, err := parseTargetIP(target)
+	targetIP, targetNet, err := ParseTargetAddress(target)
 	if err != nil {
 		return -1, err
 	}
@@ -28,7 +27,7 @@ func FindInterfaceIdxForAddr(target string) (int, error) {
 				continue
 			}
 			if targetNet != nil {
-				if isSubnetOverlap(targetNet, ipNet) {
+				if AreSubnetsOverlapping(targetNet, ipNet) {
 					fmt.Println(targetNet.String(), ipNet.String(), iface.Name)
 				}
 			} else {
@@ -66,24 +65,4 @@ func filterInterfaces(interfaces []net.Interface) []net.Interface {
 		filtered = append(filtered, iface)
 	}
 	return filtered
-}
-
-func parseTargetIP(target string) (net.IP, *net.IPNet, error) {
-	if strings.Contains(target, "/") {
-		ip, subnet, err := net.ParseCIDR(target)
-		if err != nil {
-			return nil, nil, fmt.Errorf("invalid CIDR: %q", err)
-		}
-		return ip, subnet, nil
-	}
-
-	ip := net.ParseIP(target)
-	if ip == nil {
-		return nil, nil, fmt.Errorf("invalid IP address: %q", target)
-	}
-	return ip, nil, nil
-}
-
-func isSubnetOverlap(net1, net2 *net.IPNet) bool {
-	return net1.Contains(net2.IP) || net2.Contains(net1.IP)
 }
