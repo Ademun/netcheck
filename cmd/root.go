@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ademun/netcheck/network"
+	"github.com/ademun/netcheck/network/utils"
 	"github.com/ademun/netcheck/reports"
 	"github.com/spf13/cobra"
 )
@@ -57,20 +58,12 @@ Use only on networks you own or have explicit permission to scan!`,
 			ports = "-"
 		}
 
+		utils.FindInterfaceIdxForAddr("192.168.1.0/24")
+
 		start := time.Now()
 
 		progress := atomic.Int32{}
 		splitPorts := network.SplitPorts(ports)
-
-		/*go func() {
-			for {
-				if progress.Load() == int32(len(splitPorts)) {
-					break
-				}
-				fmt.Printf("Scanned %d/%d ports\n", progress.Load(), len(splitPorts))
-				ClearScreen()
-			}
-		}()*/
 
 		scanResults := network.ScanHost(ip, splitPorts, &progress)
 		slices.SortFunc(scanResults, func(a network.Result, b network.Result) int {
