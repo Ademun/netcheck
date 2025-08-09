@@ -12,12 +12,11 @@ import (
 	"time"
 
 	"github.com/ademun/netcheck/network"
-	"github.com/ademun/netcheck/network/utils"
+	"github.com/ademun/netcheck/network/discovery"
 	"github.com/ademun/netcheck/reports"
 	"github.com/spf13/cobra"
 )
 
-// rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "netcheck",
 	Short: "A minimalist TCP port scanner with parallel scanning and range support",
@@ -58,7 +57,9 @@ Use only on networks you own or have explicit permission to scan!`,
 			ports = "-"
 		}
 
-		utils.GetHostsFromSubnet("192.168.1.0/24")
+		subnet := "192.168.1.0/24"
+		scanner := discovery.NewARPScanner(subnet)
+		scanner.Discover()
 
 		start := time.Now()
 

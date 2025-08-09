@@ -28,11 +28,11 @@ func FindInterfaceIdxForAddr(target string) (int, error) {
 			}
 			if targetNet != nil {
 				if AreSubnetsOverlapping(targetNet, ipNet) {
-					fmt.Println(targetNet.String(), ipNet.String(), iface.Name)
+					return iface.Index, nil
 				}
 			} else {
 				if ipNet.Contains(targetIP) {
-					fmt.Println(targetIP, ipNet.String(), iface.Name)
+					return iface.Index, nil
 				}
 			}
 		}
@@ -65,4 +65,22 @@ func filterInterfaces(interfaces []net.Interface) []net.Interface {
 		filtered = append(filtered, iface)
 	}
 	return filtered
+}
+
+func GetInterfaceIPv4Addr(iface *net.Interface) (net.IP, error) {
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		if ip := ipNet.IP.To4(); ip != nil {
+			return ip, nil
+		}
+	}
+	return nil, fmt.Errorf("interface %s doesn't have an ipv4 address", iface.Name)
 }
