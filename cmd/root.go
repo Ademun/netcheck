@@ -59,7 +59,10 @@ Use only on networks you own or have explicit permission to scan!`,
 
 		subnet := "192.168.1.0/24"
 		scanner := discovery.NewARPScanner(subnet)
-		scanner.Discover()
+		err = scanner.Discover()
+		if err != nil {
+			panic(err)
+		}
 
 		start := time.Now()
 

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func GetHostsFromSubnet(targetCIDR string) ([]net.IP, error) {
+func HostsFromSubnet(targetCIDR string) ([]net.IP, error) {
 	targetIp, targetNet, err := net.ParseCIDR(targetCIDR)
 	if err != nil {
 		return nil, fmt.Errorf("invalid CIDR: %q", err)
@@ -45,4 +45,23 @@ func ParseTargetAddress(target string) (net.IP, *net.IPNet, error) {
 
 func AreSubnetsOverlapping(net1, net2 *net.IPNet) bool {
 	return net1.Contains(net2.IP) || net2.Contains(net1.IP)
+}
+
+func BroadcastIPv4Address(ip net.IP, mask net.IPMask) net.IP {
+	ip = ip.To4()
+	if ip == nil {
+		return nil
+	}
+
+	network := make(net.IP, len(ip))
+	for i := range ip {
+		network[i] = ip[i] & mask[i]
+	}
+
+	broadcast := make(net.IP, len(ip))
+	for i := range network {
+		broadcast[i] = network[i] | ^mask[i]
+	}
+
+	return broadcast
 }

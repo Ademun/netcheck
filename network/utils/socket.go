@@ -4,10 +4,11 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/google/gopacket/pcap"
 	"golang.org/x/sys/windows"
 )
 
-func CreateWindowsSocket(ip [4]byte) (int, error) {
+func WinRawSocketIPv4(ip [4]byte) (int, error) {
 	fd, err := windows.Socket(windows.AF_INET, windows.SOCK_RAW, windows.IPPROTO_IP)
 	if err != nil {
 		fmt.Println(err)
@@ -41,4 +42,20 @@ func CreateWindowsSocket(ip [4]byte) (int, error) {
 
 	fmt.Println(fd, int(fd))
 	return int(fd), nil
+}
+
+func PcapSocket(iface string) (*pcap.Handle, error) {
+	handle, err := pcap.OpenLive(
+		iface,
+		1600,
+		true,
+		pcap.BlockForever,
+	)
+
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	return handle, nil
 }
