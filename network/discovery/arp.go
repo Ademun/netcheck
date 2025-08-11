@@ -18,7 +18,6 @@ type ARPDiscoverer struct {
 	timeout time.Duration
 }
 
-// NewARPDiscoverer creates a new ARPDiscoverer instance
 func NewARPDiscoverer(target string, timeout time.Duration) *ARPDiscoverer {
 	return &ARPDiscoverer{target: target, timeout: timeout}
 }
@@ -59,10 +58,19 @@ func (a *ARPDiscoverer) Discover() ([]Host, error) {
 	}
 
 	results := make(chan Host)
-	ctx, cancel := context.WithTimeout(context.Background(), a.timeout)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go listen(pcapHandle, ifaceIP, ifaceMAC, results, ctx)
+	// Listen for ARP packets
+	go listenARP(pcapHandle, ifaceIP, ifaceMAC, results, ctx)
+
+	// Collect results
+	availableHosts := make([]Host, 0)
+	go func() {
+		for host := range results {
+			availableHosts = append(availableHosts, host)
+		}
+	}()
 
 	// Send ARP request to each host
 	for _, targetIP := range hosts {
@@ -71,25 +79,23 @@ func (a *ARPDiscoverer) Discover() ([]Host, error) {
 			return nil, fmt.Errorf("ARP packet creation failed: %w", err)
 		}
 
-		if err := pcapHandle.WritePacketData(packet); err != nil {
+		if err := pcapHandle.WritePacketData(packet[:42]); err != nil {
 			return nil, fmt.Errorf("packet transmission failed: %w", err)
 		}
+		time.Sleep(time.Millisecond * 1)
 	}
 
-	// Collect results
-	availableHosts := make([]Host, 0)
-	for host := range results {
-		availableHosts = append(availableHosts, host)
-	}
+	time.Sleep(a.timeout)
+	cancel()
 
 	return availableHosts, nil
 }
 
 // listen captures and processes ARP replies
-func listen(handle *pcap.Handle, ifaceIP net.IP, ifaceMAC net.HardwareAddr, results chan<- Host, ctx context.Context) {
+func listenARP(handle *pcap.Handle, ifaceIP net.IP, ifaceMAC net.HardwareAddr, results chan<- Host, ctx context.Context) {
 	defer close(results)
 
-	filter := fmt.Sprintf("arp and dst host %s and ether dst %s", ifaceIP.String(), ifaceMAC.String())
+	filter := fmt.Sprintf("arp && dst host %s && ether dst %s", ifaceIP.String(), ifaceMAC.String())
 
 	// Set filter to capture only ARP packets
 	if err := handle.SetBPFFilter(filter); err != nil {
@@ -97,16 +103,16 @@ func listen(handle *pcap.Handle, ifaceIP net.IP, ifaceMAC net.HardwareAddr, resu
 	}
 
 	packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
-	seen := make(map[*net.IP]struct{})
+	seen := make(map[string]struct{})
 
 	for {
 		select {
 		case packet := <-packetSrc.Packets():
 			host := processARPPacket(packet)
 			if host != nil {
-				if _, exists := seen[&host.IP]; !exists {
+				if _, exists := seen[host.IP.String()]; !exists {
 					results <- *host
-					seen[&host.IP] = struct{}{}
+					seen[host.IP.String()] = struct{}{}
 				}
 			}
 		case <-ctx.Done():
@@ -152,6 +158,7 @@ func createARPPacket(ifaceMAC net.HardwareAddr, ifaceIP, targetIP net.IP) ([]byt
 }
 
 func processARPPacket(packet gopacket.Packet) *Host {
+
 	ARPLayer := packet.Layer(layers.LayerTypeARP)
 	if ARPLayer == nil {
 		return nil // Not an ARP packet

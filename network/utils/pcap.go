@@ -10,7 +10,7 @@ import (
 func OpenPCAPHandle(iface string) (*pcap.Handle, error) {
 	handle, err := pcap.OpenLive(
 		iface,
-		1600, // Snaplen
+		6400, // Snaplen
 		true, // Promiscuous mode
 		pcap.BlockForever,
 	)
