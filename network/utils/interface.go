@@ -8,44 +8,51 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
-func InterfaceForAddr(target string) (*pcap.Interface, error) {
-	targetIP, targetNet, err := ParseTargetAddress(target)
+// FindInterfaceForAddr finds the appropriate network interface for a target address
+func FindInterfaceForAddr(target string) (*pcap.Interface, error) {
+	targetIP, targetNet, err := ParseIPOrCIDR(target)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("target address parsing failed: %w", err)
 	}
-	ifaces, err := ActiveInterfaces()
-	if err != nil {
-		return nil, err
-	}
-	ifaces = filterInterfaces(ifaces)
 
-	for _, iface := range ifaces {
+	ifaces, err := GetActiveInterfaces()
+	if err != nil {
+		return nil, fmt.Errorf("active interface lookup failed: %w", err)
+	}
+
+	filtered := filterInterfaces(ifaces)
+	if len(filtered) == 0 {
+		return nil, fmt.Errorf("no suitable interfaces available")
+	}
+
+	// Find interface containing target IP/subnet
+	for _, iface := range filtered {
 		for _, addr := range iface.Addresses {
-			ipNet := &net.IPNet{
-				IP:   addr.IP,
-				Mask: addr.Netmask,
-			}
+			ipNet := &net.IPNet{IP: addr.IP, Mask: addr.Netmask}
+
 			if targetNet != nil {
 				if AreSubnetsOverlapping(targetNet, ipNet) {
 					return &iface, nil
 				}
-			} else {
-				if ipNet.Contains(targetIP) {
-					return &iface, nil
-				}
+			} else if ipNet.Contains(targetIP) {
+				return &iface, nil
 			}
 		}
 	}
-	return nil, nil
+
+	return nil, fmt.Errorf("no interface found for target: %s", target)
 }
 
-func ActiveInterfaces() ([]pcap.Interface, error) {
+// GetActiveInterfaces returns interfaces that are up
+func GetActiveInterfaces() ([]pcap.Interface, error) {
 	devices, err := pcap.FindAllDevs()
 	if err != nil {
-		return nil, fmt.Errorf("PCAP device error:", err)
+		return nil, fmt.Errorf("PCAP device enumeration failed: %w", err)
 	}
-	active := make([]pcap.Interface, 0)
+
+	active := make([]pcap.Interface, 0, len(devices))
 	for _, device := range devices {
+		// Check if interface is up (0x2 flag)
 		if device.Flags&0x2 != 0 {
 			active = append(active, device)
 		}
@@ -54,23 +61,22 @@ func ActiveInterfaces() ([]pcap.Interface, error) {
 	return active, nil
 }
 
-func InterfaceIPv4Net(iface *pcap.Interface) (net.IP, net.IPMask, error) {
+// GetInterfaceIPv4NetInfo returns IPv4 address and netmask for an interface
+func GetInterfaceIPv4NetInfo(iface *pcap.Interface) (net.IP, net.IPMask, error) {
 	for _, addr := range iface.Addresses {
-		ipNet := net.IPNet{
-			IP:   addr.IP,
-			Mask: addr.Netmask,
-		}
-		if ip := ipNet.IP.To4(); ip != nil {
-			return ip, ipNet.Mask, nil
+		if ip := addr.IP.To4(); ip != nil {
+			return ip, addr.Netmask, nil
 		}
 	}
-	return nil, nil, fmt.Errorf("interface %s doesn't have an ipv4 address", iface.Name)
+	return nil, nil, fmt.Errorf("interface %s has no IPv4 addresses", iface.Name)
 }
 
+// filterInterfaces removes loopback and inactive interfaces
 func filterInterfaces(interfaces []pcap.Interface) []pcap.Interface {
-	filtered := make([]pcap.Interface, 0)
+	filtered := make([]pcap.Interface, 0, len(interfaces))
 	for _, iface := range interfaces {
-		if iface.Flags&0x1 != 0 && len(iface.Addresses) > 0 {
+		// Skip loopback (0x1) interfaces
+		if iface.Flags&0x1 != 0 {
 			continue
 		}
 		filtered = append(filtered, iface)
@@ -83,70 +89,71 @@ type sysIfaceInfo struct {
 	mac net.HardwareAddr
 }
 
-func IfaceHardwareAddr(pcapName string) (net.HardwareAddr, error) {
+// GetInterfaceMAC retrieves MAC address for a pcap interface
+func GetInterfaceMAC(pcapName string) (net.HardwareAddr, error) {
 	devices, err := pcap.FindAllDevs()
 	if err != nil {
-		return nil, fmt.Errorf("PCAP device error: %s", err)
+		return nil, fmt.Errorf("PCAP device enumeration failed: %w", err)
 	}
 
-	idx := slices.IndexFunc(devices, func(device pcap.Interface) bool { return device.Name == pcapName })
+	// Find device by name
+	idx := slices.IndexFunc(devices, func(d pcap.Interface) bool { return d.Name == pcapName })
 	if idx == -1 {
-		return nil, fmt.Errorf("device %s not found", pcapName)
+		return nil, fmt.Errorf("device not found: %s", pcapName)
 	}
 	device := devices[idx]
 
+	// Get system interfaces
 	sysIfaces, err := net.Interfaces()
 	if err != nil {
-		return nil, fmt.Errorf("system interface error: %s", err)
+		return nil, fmt.Errorf("system interface enumeration failed: %w", err)
 	}
 
+	// Build IP-to-interface mapping
 	sysInfo := make(map[string]sysIfaceInfo)
 	for _, iface := range sysIfaces {
-		ips := make([]net.IP, 0)
 		addrs, err := iface.Addrs()
-		if err != nil {
+		if err != nil || iface.HardwareAddr == nil {
 			continue
 		}
+
+		ips := make([]net.IP, 0, len(addrs))
 		for _, addr := range addrs {
-			ipNet, ok := addr.(*net.IPNet)
-			if ok {
+			if ipNet, ok := addr.(*net.IPNet); ok {
 				ips = append(ips, ipNet.IP)
 			}
 		}
 		sysInfo[iface.Name] = sysIfaceInfo{ips: ips, mac: iface.HardwareAddr}
 	}
 
+	// Try direct name match first
 	if info, exists := sysInfo[device.Name]; exists {
 		return info.mac, nil
 	}
 
-	deviceIps := make([]net.IP, 0, len(device.Addresses))
-	for _, addr := range device.Addresses {
-		deviceIps = append(deviceIps, addr.IP)
+	// Fallback to IP matching
+	deviceIPs := make([]net.IP, len(device.Addresses))
+	for i, addr := range device.Addresses {
+		deviceIPs[i] = addr.IP
 	}
 
 	for _, info := range sysInfo {
-		if ipSetEqual(deviceIps, info.ips) {
+		if ipSetEqual(deviceIPs, info.ips) {
 			return info.mac, nil
 		}
 	}
-	return nil, fmt.Errorf("no system interface matches device %s", pcapName)
+
+	return nil, fmt.Errorf("no MAC found for device: %s", pcapName)
 }
 
+// Helper types and functions
 func ipSetEqual(a, b []net.IP) bool {
 	if len(a) != len(b) {
 		return false
 	}
 
 	for _, ipA := range a {
-		found := false
-		for _, ipB := range b {
-			if ipA.Equal(ipB) {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !slices.ContainsFunc(b, func(ipB net.IP) bool { return ipA.Equal(ipB) }) {
 			return false
 		}
 	}

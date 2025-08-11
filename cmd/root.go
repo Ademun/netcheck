@@ -58,11 +58,12 @@ Use only on networks you own or have explicit permission to scan!`,
 		}
 
 		subnet := "192.168.1.0/24"
-		scanner := discovery.NewARPScanner(subnet)
-		err = scanner.Discover()
+		discoverer := discovery.NewARPDiscoverer(subnet, time.Second*10)
+		hosts, err := discoverer.Discover()
 		if err != nil {
 			panic(err)
 		}
+		fmt.Printf("hosts: %v\n", hosts)
 
 		start := time.Now()
 
