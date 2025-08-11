@@ -12,12 +12,6 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
-// Host represents a discovered network host with its IP and MAC address
-type Host struct {
-	IP  net.IP
-	MAC net.HardwareAddr
-}
-
 // ARPDiscoverer performs host discovery using ARP requests
 type ARPDiscoverer struct {
 	target  string // Target subnet in CIDR notation
