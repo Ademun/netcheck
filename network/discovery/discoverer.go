@@ -1,13 +1,17 @@
 package discovery
 
-import "net"
+import (
+	"net"
+	"time"
+)
 
 // Host represents a discovered network host with its IP and MAC address
 type Host struct {
-	IP  net.IP
-	MAC net.HardwareAddr
+	IP    net.IP
+	MAC   net.HardwareAddr
+	Delay time.Duration
 }
 
-type Dicoverer interface {
+type Discoverer interface {
 	Discover() ([]Host, error)
 }

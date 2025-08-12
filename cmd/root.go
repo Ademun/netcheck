@@ -58,7 +58,7 @@ Use only on networks you own or have explicit permission to scan!`,
 		}
 
 		subnet := "192.168.1.0/24"
-		discoverer := discovery.NewARPDiscoverer(subnet, time.Second*5)
+		discoverer := discovery.NewARPDiscoverer(subnet, time.Second*2)
 		hosts, err := discoverer.Discover()
 		if err != nil {
 			panic(err)

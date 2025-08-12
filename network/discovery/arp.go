@@ -61,8 +61,10 @@ func (a *ARPDiscoverer) Discover() ([]Host, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	delayMap := make(map[string]time.Time)
+
 	// Listen for ARP packets
-	go listenARP(pcapHandle, ifaceIP, ifaceMAC, results, ctx)
+	go listenARP(pcapHandle, ifaceIP, ifaceMAC, delayMap, results, ctx)
 
 	// Collect results
 	availableHosts := make([]Host, 0)
@@ -82,7 +84,8 @@ func (a *ARPDiscoverer) Discover() ([]Host, error) {
 		if err := pcapHandle.WritePacketData(packet[:42]); err != nil {
 			return nil, fmt.Errorf("packet transmission failed: %w", err)
 		}
-		time.Sleep(time.Millisecond * 1)
+		delayMap[targetIP.String()] = time.Now()
+		time.Sleep(time.Millisecond * 8)
 	}
 
 	time.Sleep(a.timeout)
@@ -92,7 +95,7 @@ func (a *ARPDiscoverer) Discover() ([]Host, error) {
 }
 
 // listen captures and processes ARP replies
-func listenARP(handle *pcap.Handle, ifaceIP net.IP, ifaceMAC net.HardwareAddr, results chan<- Host, ctx context.Context) {
+func listenARP(handle *pcap.Handle, ifaceIP net.IP, ifaceMAC net.HardwareAddr, delayMap map[string]time.Time, results chan<- Host, ctx context.Context) {
 	defer close(results)
 
 	filter := fmt.Sprintf("arp && dst host %s && ether dst %s", ifaceIP.String(), ifaceMAC.String())
@@ -108,7 +111,7 @@ func listenARP(handle *pcap.Handle, ifaceIP net.IP, ifaceMAC net.HardwareAddr, r
 	for {
 		select {
 		case packet := <-packetSrc.Packets():
-			host := processARPPacket(packet)
+			host := processARPPacket(packet, delayMap)
 			if host != nil {
 				if _, exists := seen[host.IP.String()]; !exists {
 					results <- *host
@@ -157,7 +160,7 @@ func createARPPacket(ifaceMAC net.HardwareAddr, ifaceIP, targetIP net.IP) ([]byt
 	return buf.Bytes(), nil
 }
 
-func processARPPacket(packet gopacket.Packet) *Host {
+func processARPPacket(packet gopacket.Packet, delayMap map[string]time.Time) *Host {
 
 	ARPLayer := packet.Layer(layers.LayerTypeARP)
 	if ARPLayer == nil {
@@ -171,8 +174,13 @@ func processARPPacket(packet gopacket.Packet) *Host {
 		return nil
 	}
 
-	return &Host{
-		IP:  net.IP(ARP.SourceProtAddress),
-		MAC: net.HardwareAddr(ARP.SourceHwAddress),
+	if start, ok := delayMap[net.IP(ARP.SourceProtAddress).String()]; ok {
+		return &Host{
+			IP:    net.IP(ARP.SourceProtAddress),
+			MAC:   net.HardwareAddr(ARP.SourceHwAddress),
+			Delay: time.Since(start),
+		}
 	}
+
+	return nil
 }
