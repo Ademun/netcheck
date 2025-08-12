@@ -17,9 +17,9 @@ type Scanner interface {
 type PortStatus int
 
 const (
-	OPEN     PortStatus = iota //Available and accepting connections
-	FILTERED                   //Filtered by firewall (no response)
-	CLOSED                     //Available but not accepting connections
+	OPEN     PortStatus = iota // Available and accepting connections
+	FILTERED                   // Filtered by firewall (no response)
+	CLOSED                     // Available but not accepting connections
 )
 
 func (p PortStatus) String() string {

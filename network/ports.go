@@ -23,10 +23,10 @@ func SplitPorts(ports string) []string {
 func portsFromRange(ran string) []string {
 	result := make([]string, 0)
 	borders := strings.Split(ran, "-")
-	//If input is like 10-20-30, it only makes sense to iterate from 10 to 30
+	// If input is like 10-20-30, it only makes sense to iterate from 10 to 30
 	start, end := borders[0], borders[len(borders)-1]
 
-	//For example -443 is identical to 0-443, 443- is identical to 443-65353, also handles invalid inputs in a way
+	// For example -443 is identical to 0-443, 443- is identical to 443-65353, also handles invalid inputs in a way
 	iStart := ConvPort(start)
 	if iStart == -1 {
 		iStart = 0

@@ -5,7 +5,8 @@
 
 [Версия на русском](https://github.com/Ademun/netcheck/blob/main/README.ru.md)
 
-`netcheck` is a minimalist network port scanner implementing basic TCP scanning functionality. Created for educational purposes and to demonstrate network programming principles in Go.
+`netcheck` is a minimalist network port scanner implementing basic TCP scanning functionality.
+Created for educational purposes and to demonstrate network programming principles in Go.
 
 ## Features
 
@@ -21,6 +22,7 @@ The tool supports exporting scan results in multiple formats for further analysi
 - **CSV**: Tabular format for spreadsheets and databases
 
 To generate reports:
+
 ```bash
 # JSON report
 netcheck example.com -o json
@@ -28,6 +30,7 @@ netcheck example.com -o json
 # CSV report
 netcheck example.com -o csv
 ```
+
 Report files are automatically named using the timestamp pattern YYYY-MM-DD HH-MM.format
 
 **Key features:**
@@ -51,10 +54,10 @@ Report files are automatically named using the timestamp pattern YYYY-MM-DD HH-M
    go build -o netcheck cmd/main.go
    ```
 
-
 ## Usage
 
 Basic syntax:
+
 ```bash
 netcheck [FLAGS] TARGET
 ```
@@ -62,26 +65,29 @@ netcheck [FLAGS] TARGET
 ### Command Examples:
 
 Scan specific ports:
+
 ```bash
 netcheck -p 80,443,8080 example.com 
 ```
 
 Scan port range:
+
 ```bash
 netcheck -p 1-100 example.com
 ```
 
 Scan all ports showing closed ones:
+
 ```bash
 netcheck -v example.com
 ```
 
 ### Flags:
-| Flag       | Description                          | Default      |
-|------------|-------------------------------------|--------------|
-| `-p`, `--ports` | Ports to scan                      | All (0-65535)|
-| `-v`, `--verbose` | Show closed ports                 | `false`      |
 
+| Flag              | Description       | Default       |
+|-------------------|-------------------|---------------|
+| `-p`, `--ports`   | Ports to scan     | All (0-65535) |
+| `-v`, `--verbose` | Show closed ports | `false`       |
 
 ## Limitations
 
@@ -91,6 +97,7 @@ netcheck -v example.com
 ## Roadmap
 
 Planned improvements:
+
 - Implement SYN scanning
 - Add UDP protocol support
 - Service version detection
@@ -102,4 +109,5 @@ Project distributed under MIT license. See [LICENSE](LICENSE) for details.
 
 ---
 
-> **Note:** This tool is intended for legal use only. Always obtain explicit permission before scanning networks.
+> **Note:** This tool is intended for legal use only. Always obtain explicit permission before
+> scanning networks.

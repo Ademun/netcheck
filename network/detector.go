@@ -132,7 +132,7 @@ func DetectService(conn net.Conn, port string) Service {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return Service{Name: defaultServices[port], Version: "unknown"}
 	}
-	//TODO: implement service name and version extraction
+	// TODO: implement service name and version extraction
 	return Service{Name: "todo", Version: "todo"}
 }
 

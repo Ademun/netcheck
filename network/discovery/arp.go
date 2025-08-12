@@ -176,8 +176,8 @@ func processARPPacket(packet gopacket.Packet, delayMap map[string]time.Time) *Ho
 
 	if start, ok := delayMap[net.IP(ARP.SourceProtAddress).String()]; ok {
 		return &Host{
-			IP:    net.IP(ARP.SourceProtAddress),
-			MAC:   net.HardwareAddr(ARP.SourceHwAddress),
+			IP:    ARP.SourceProtAddress,
+			MAC:   ARP.SourceHwAddress,
 			Delay: time.Since(start),
 		}
 	}
