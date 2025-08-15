@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 
+	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
 )
 
@@ -20,4 +21,18 @@ func OpenPCAPHandle(iface string) (*pcap.Handle, error) {
 	}
 
 	return handle, nil
+}
+
+func PcapListenPackets(handle *pcap.Handle, filter string) (*gopacket.PacketSource, error) {
+	if err := handle.SetBPFFilter(filter); err != nil {
+		return nil, fmt.Errorf("failed to set BPF filter: %s", err)
+	}
+	return gopacket.NewPacketSource(handle, handle.LinkType()), nil
+}
+
+func PcapSendPacket(handle *pcap.Handle, packet []byte) error {
+	if err := handle.WritePacketData(packet); err != nil {
+		return fmt.Errorf("pcap write failed: %w", err)
+	}
+	return nil
 }

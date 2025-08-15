@@ -15,21 +15,9 @@ type Route struct {
 	Metrics int
 }
 
-func FindRoute(dst net.IP) (*Route, error) {
-	var table []Route
-	switch runtime.GOOS {
-	case "windows":
-		t, err := getWinRoutingTable()
-		if err != nil {
-			return nil, err
-		}
-		table = t
-	default:
-		return nil, fmt.Errorf("OS %s not supported", runtime.GOOS)
-	}
-
+func FindRoute(dst net.IP, routes []Route) *Route {
 	candidates := make([]Route, 0)
-	for _, route := range table {
+	for _, route := range routes {
 		routeNet := net.IPNet{IP: route.Dst, Mask: route.Mask}
 		if routeNet.Contains(dst) {
 			candidates = append(candidates, route)
@@ -44,5 +32,18 @@ func FindRoute(dst net.IP) (*Route, error) {
 		return candidates[i].Metrics < candidates[j].Metrics
 	})
 
-	return &candidates[0], nil
+	return &candidates[0]
+}
+
+func GetRoutingTable() ([]Route, error) {
+	switch runtime.GOOS {
+	case "windows":
+		t, err := getWinRoutingTable()
+		if err != nil {
+			return nil, err
+		}
+		return t, nil
+	default:
+		return nil, fmt.Errorf("OS %s not supported", runtime.GOOS)
+	}
 }

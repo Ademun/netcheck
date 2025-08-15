@@ -1,130 +1,176 @@
 package discovery
 
 import (
-	"context"
+	"bytes"
+	"errors"
 	"fmt"
 	"net"
+	"sort"
+	"sync"
 	"time"
 
+	"github.com/ademun/netcheck/network/routing"
 	"github.com/ademun/netcheck/network/utils"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 )
 
-// ARPDiscoverer performs host discovery using ARP requests
-type ARPDiscoverer struct {
-	target  string // Target subnet in CIDR notation
-	timeout time.Duration
+const (
+	maxProcs = 10
+)
+
+type ArpDiscoverer struct {
+	interPacketDelay time.Duration
+	finalDelay       time.Duration
+	maxRetries       int
 }
 
-func NewARPDiscoverer(target string, timeout time.Duration) *ARPDiscoverer {
-	return &ARPDiscoverer{target: target, timeout: timeout}
+func NewArpDiscoverer() *ArpDiscoverer {
+	return &ArpDiscoverer{
+		interPacketDelay: time.Millisecond * 8,
+		finalDelay:       time.Second * 2,
+		maxRetries:       2,
+	}
 }
 
-// Discover sends ARP requests to all hosts in the target subnet
-func (a *ARPDiscoverer) Discover() ([]Host, error) {
-	// Find network interface for target subnet
-	iface, err := utils.FindInterfaceForAddr(a.target)
+func (A ArpDiscoverer) Discover(ips []net.IP) ([]*Host, error) {
+	results := make([]*Host, 0)
+
+	rtable, err := routing.GetRoutingTable()
 	if err != nil {
-		return nil, fmt.Errorf("interface lookup failed: %w", err)
-	}
-	if iface == nil {
-		return nil, fmt.Errorf("no suitable interface found for target: %s", a.target)
+		return nil, err
 	}
 
-	// Get interface IPv4 address and subnet mask
-	ifaceIP, _, err := utils.GetInterfaceIPv4NetInfo(iface)
+	route := routing.FindRoute(ips[0], rtable)
+	if route == nil {
+		return nil, errors.New("no route found")
+	}
+
+	pcapIface, err := utils.SysToPcap(route.Iface)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get interface IP: %w", err)
+		return nil, err
 	}
 
-	// Get list of hosts in target subnet
-	hosts, err := utils.GetHostsFromSubnet(a.target)
+	ifaceIP, _, err := utils.GetInterfaceIPv4NetInfo(pcapIface)
 	if err != nil {
-		return nil, fmt.Errorf("subnet hosts enumeration failed: %w", err)
+		return nil, err
 	}
 
-	// Create PCAP handle for packet transmission
-	pcapHandle, err := utils.OpenPCAPHandle(iface.Name)
+	handle, err := utils.OpenPCAPHandle(pcapIface.Name)
 	if err != nil {
-		return nil, fmt.Errorf("packet socket creation failed: %w", err)
+		return nil, err
 	}
+	defer handle.Close()
 
-	// Get interface MAC address
-	ifaceMAC, err := utils.GetInterfaceMAC(iface.Name)
+	packets, err := utils.PcapListenPackets(handle, buildFilter(ifaceIP, route.Iface.HardwareAddr))
 	if err != nil {
-		return nil, fmt.Errorf("MAC address retrieval failed: %w", err)
+		return nil, err
 	}
 
-	results := make(chan Host)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	receive := processPackets(packets.Packets())
 
-	delayMap := make(map[string]time.Time)
+	statusMap := sync.Map{}
+	for _, ip := range ips {
+		statusMap.Store(ip.String(), false)
+	}
 
-	// Listen for ARP packets
-	go listenARP(pcapHandle, ifaceIP, ifaceMAC, delayMap, results, ctx)
+	wg := &sync.WaitGroup{}
 
-	// Collect results
-	availableHosts := make([]Host, 0)
+	wg.Add(1)
 	go func() {
-		for host := range results {
-			availableHosts = append(availableHosts, host)
-		}
-	}()
-
-	// Send ARP request to each host
-	for _, targetIP := range hosts {
-		packet, err := createARPPacket(ifaceMAC, ifaceIP, targetIP)
-		if err != nil {
-			return nil, fmt.Errorf("ARP packet creation failed: %w", err)
-		}
-
-		if err := pcapHandle.WritePacketData(packet[:42]); err != nil {
-			return nil, fmt.Errorf("packet transmission failed: %w", err)
-		}
-		delayMap[targetIP.String()] = time.Now()
-		time.Sleep(time.Millisecond * 8)
-	}
-
-	time.Sleep(a.timeout)
-	cancel()
-
-	return availableHosts, nil
-}
-
-// listen captures and processes ARP replies
-func listenARP(handle *pcap.Handle, ifaceIP net.IP, ifaceMAC net.HardwareAddr, delayMap map[string]time.Time, results chan<- Host, ctx context.Context) {
-	defer close(results)
-
-	filter := fmt.Sprintf("arp && dst host %s && ether dst %s", ifaceIP.String(), ifaceMAC.String())
-
-	// Set filter to capture only ARP packets
-	if err := handle.SetBPFFilter(filter); err != nil {
-		fmt.Printf("Warning: BPF filter setup failed: %v\n", err)
-	}
-
-	packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
-	seen := make(map[string]struct{})
-
-	for {
-		select {
-		case packet := <-packetSrc.Packets():
-			host := processARPPacket(packet, delayMap)
-			if host != nil {
-				if _, exists := seen[host.IP.String()]; !exists {
-					results <- *host
-					seen[host.IP.String()] = struct{}{}
+		for data := range receive {
+			if status, ok := statusMap.Load(data.IP.String()); ok {
+				if !status.(bool) {
+					statusMap.Swap(data.IP.String(), true)
+					results = append(results, data)
 				}
 			}
-		case <-ctx.Done():
-			return
 		}
+		wg.Done()
+	}()
+
+	for range A.maxRetries {
+		for _, ip := range ips {
+			if status, ok := statusMap.Load(ip.String()); ok {
+				if status.(bool) {
+					continue
+				}
+			}
+			packet, err := createARPPacket(route.Iface.HardwareAddr, ifaceIP, ip)
+			if err != nil {
+				continue
+			}
+
+			err = utils.PcapSendPacket(handle, packet)
+			if err != nil {
+				return nil, err
+			}
+			time.Sleep(A.interPacketDelay)
+		}
+		time.Sleep(A.finalDelay)
+	}
+	handle.Close()
+
+	wg.Wait()
+
+	results = append(results, &Host{
+		IP:   ifaceIP,
+		RTT:  0,
+		Info: fmt.Sprintf("HW address: %s", route.Iface.HardwareAddr),
+	})
+
+	sort.Slice(results, func(i, j int) bool {
+		return bytes.Compare(results[i].IP, results[j].IP) < 0
+	})
+
+	return results, nil
+}
+
+func buildFilter(ifaceIP net.IP, ifaceMAC net.HardwareAddr) string {
+	return fmt.Sprintf("arp && dst host %s && ether dst %s", ifaceIP.String(), ifaceMAC.String())
+}
+
+func processPackets(packets <-chan gopacket.Packet) <-chan *Host {
+	results := make(chan *Host)
+	sem := make(chan struct{}, maxProcs)
+
+	go func() {
+		for packet := range packets {
+			sem <- struct{}{}
+			go func() {
+				host := processARPPacket(packet)
+				if host != nil {
+					results <- host
+				}
+				<-sem
+			}()
+		}
+		close(sem)
+		close(results)
+	}()
+
+	return results
+}
+
+func processARPPacket(packet gopacket.Packet) *Host {
+	ARPLayer := packet.Layer(layers.LayerTypeARP)
+	if ARPLayer == nil {
+		return nil
+	}
+
+	ARP := ARPLayer.(*layers.ARP)
+
+	if ARP.Operation != layers.ARPReply {
+		return nil
+	}
+
+	return &Host{
+		IP:   ARP.SourceProtAddress,
+		RTT:  time.Since(packet.Metadata().Timestamp),
+		Info: fmt.Sprintf("HW address: %s", net.HardwareAddr(ARP.SourceHwAddress).String()),
 	}
 }
 
-// createARPPacket constructs an ARP request packet
 func createARPPacket(ifaceMAC net.HardwareAddr, ifaceIP, targetIP net.IP) ([]byte, error) {
 	// Ethernet layer (broadcast)
 	ethernetLayer := &layers.Ethernet{
@@ -158,29 +204,4 @@ func createARPPacket(ifaceMAC net.HardwareAddr, ifaceIP, targetIP net.IP) ([]byt
 	}
 
 	return buf.Bytes(), nil
-}
-
-func processARPPacket(packet gopacket.Packet, delayMap map[string]time.Time) *Host {
-
-	ARPLayer := packet.Layer(layers.LayerTypeARP)
-	if ARPLayer == nil {
-		return nil // Not an ARP packet
-	}
-
-	ARP := ARPLayer.(*layers.ARP)
-
-	// Validate it's a reply
-	if ARP.Operation != layers.ARPReply {
-		return nil
-	}
-
-	if start, ok := delayMap[net.IP(ARP.SourceProtAddress).String()]; ok {
-		return &Host{
-			IP:    ARP.SourceProtAddress,
-			MAC:   ARP.SourceHwAddress,
-			Delay: time.Since(start),
-		}
-	}
-
-	return nil
 }

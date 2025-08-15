@@ -1,17 +1,21 @@
 package discovery
 
 import (
+	"fmt"
 	"net"
 	"time"
 )
 
-// Host represents a discovered network host with its IP and MAC address
 type Host struct {
-	IP    net.IP
-	MAC   net.HardwareAddr
-	Delay time.Duration
+	IP   net.IP
+	RTT  time.Duration
+	Info string
+}
+
+func (h Host) String() string {
+	return fmt.Sprintf("IP: %s\nRTT: %s\nInfo: %q\n", h.IP, h.RTT, h.Info)
 }
 
 type Discoverer interface {
-	Discover() ([]Host, error)
+	Discover([]net.IP) ([]*Host, error)
 }
