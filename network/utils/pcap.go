@@ -8,11 +8,11 @@ import (
 )
 
 // OpenPCAPHandle creates a raw packet capture handle on
-func OpenPCAPHandle(iface string) (*pcap.Handle, error) {
+func OpenPCAPHandle(iface string, promisc bool) (*pcap.Handle, error) {
 	handle, err := pcap.OpenLive(
 		iface,
-		6400, // Snaplen
-		true, // Promiscuous mode
+		6400,    // Snaplen
+		promisc, // Promiscuous mode
 		pcap.BlockForever,
 	)
 

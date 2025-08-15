@@ -1,9 +1,17 @@
 package discovery
 
 import (
+	"bytes"
 	"fmt"
 	"net"
+	"sort"
 	"time"
+)
+
+const (
+	maxProcs       = 10
+	defaultDstPort = 80
+	defaultSrcPort = 443
 )
 
 type Host struct {
@@ -18,4 +26,10 @@ func (h Host) String() string {
 
 type Discoverer interface {
 	Discover([]net.IP) ([]*Host, error)
+}
+
+func sortResults(hosts []*Host) {
+	sort.Slice(hosts, func(i, j int) bool {
+		return bytes.Compare(hosts[i].IP, hosts[j].IP) < 0
+	})
 }

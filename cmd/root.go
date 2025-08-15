@@ -13,6 +13,7 @@ import (
 
 	"github.com/ademun/netcheck/network"
 	"github.com/ademun/netcheck/network/discovery"
+	"github.com/ademun/netcheck/network/utils"
 	"github.com/ademun/netcheck/reports"
 	"github.com/spf13/cobra"
 )
@@ -31,6 +32,7 @@ Examples:
 
 Use only on networks you own or have explicit permission to scan!`,
 	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("NETCHECK STARTED AT %s\n", time.Now())
 		if len(args) == 0 || args[0] == "" {
 			fmt.Println("please provide an ip or domain name")
 			os.Exit(1)
@@ -57,13 +59,22 @@ Use only on networks you own or have explicit permission to scan!`,
 			ports = "-"
 		}
 
-		subnet := "192.168.1.0/24"
-		discoverer := discovery.NewARPDiscoverer(subnet, time.Second*2)
-		hosts, err := discoverer.Discover()
+		ips, err := utils.GetHostsFromAddr("192.168.1.0/24")
 		if err != nil {
-			panic(err)
+			fmt.Println(err)
+			os.Exit(1)
 		}
-		fmt.Printf("hosts: %v\n", hosts)
+
+		disc := discovery.NewArpDiscoverer()
+		hosts, err := disc.Discover(ips)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		for _, host := range hosts {
+			fmt.Println(host)
+		}
 
 		start := time.Now()
 
