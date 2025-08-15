@@ -33,96 +33,84 @@ func NewArpDiscoverer() *ArpDiscoverer {
 	}
 }
 
-func (A ArpDiscoverer) Discover(ips []net.IP) ([]*Host, error) {
-	results := make([]*Host, 0)
-
+func (d ArpDiscoverer) Discover(ips []net.IP) ([]*Host, error) {
 	rtable, err := routing.GetRoutingTable()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get routing table: %w", err)
 	}
 
 	route := routing.FindRoute(ips[0], rtable)
 	if route == nil {
-		return nil, errors.New("no route found")
+		return nil, errors.New("no route found for target IP")
 	}
 
 	pcapIface, err := utils.SysToPcap(route.Iface)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("interface conversion failed: %w", err)
 	}
 
-	ifaceIP, _, err := utils.GetInterfaceIPv4NetInfo(pcapIface)
+	ifaceIP, _, err := utils.GetPcapInterfaceIPv4NetInfo(pcapIface)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get interface IP info: %w", err)
 	}
 
 	handle, err := utils.OpenPCAPHandle(pcapIface.Name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pcap handle open failed: %w", err)
 	}
 	defer handle.Close()
 
-	packets, err := utils.PcapListenPackets(handle, buildFilter(ifaceIP, route.Iface.HardwareAddr))
+	filter := buildFilter(ifaceIP, route.Iface.HardwareAddr)
+	packetSource, err := utils.PcapListenPackets(handle, filter)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("packet listener failed: %w", err)
 	}
 
-	receive := processPackets(packets.Packets())
-
+	// Process incoming ARP replies
+	hostChan := processPackets(packetSource.Packets())
+	results := make([]*Host, 0)
 	statusMap := sync.Map{}
-	for _, ip := range ips {
-		statusMap.Store(ip.String(), false)
-	}
 
 	wg := &sync.WaitGroup{}
-
 	wg.Add(1)
 	go func() {
-		for data := range receive {
-			if status, ok := statusMap.Load(data.IP.String()); ok {
-				if !status.(bool) {
-					statusMap.Swap(data.IP.String(), true)
-					results = append(results, data)
-				}
+		defer wg.Done()
+		for host := range hostChan {
+			if _, found := statusMap.LoadOrStore(host.IP.String(), true); !found {
+				results = append(results, host)
 			}
 		}
-		wg.Done()
 	}()
 
-	for range A.maxRetries {
+	for range d.maxRetries {
 		for _, ip := range ips {
-			if status, ok := statusMap.Load(ip.String()); ok {
-				if status.(bool) {
-					continue
-				}
+			if _, responded := statusMap.Load(ip.String()); responded {
+				continue
 			}
+
 			packet, err := createARPPacket(route.Iface.HardwareAddr, ifaceIP, ip)
 			if err != nil {
 				continue
 			}
 
-			err = utils.PcapSendPacket(handle, packet)
-			if err != nil {
-				return nil, err
+			if err := utils.PcapSendPacket(handle, packet); err != nil {
+				return nil, fmt.Errorf("ARP packet send failed: %w", err)
 			}
-			time.Sleep(A.interPacketDelay)
+			time.Sleep(d.interPacketDelay)
 		}
-		time.Sleep(A.finalDelay)
+		time.Sleep(d.finalDelay)
 	}
 	handle.Close()
 
-	wg.Wait()
-
+	// Add local interface to results
 	results = append(results, &Host{
 		IP:   ifaceIP,
 		RTT:  0,
 		Info: fmt.Sprintf("HW address: %s", route.Iface.HardwareAddr),
 	})
 
-	sort.Slice(results, func(i, j int) bool {
-		return bytes.Compare(results[i].IP, results[j].IP) < 0
-	})
-
+	wg.Wait()
+	sortResults(results)
 	return results, nil
 }
 
@@ -131,77 +119,76 @@ func buildFilter(ifaceIP net.IP, ifaceMAC net.HardwareAddr) string {
 }
 
 func processPackets(packets <-chan gopacket.Packet) <-chan *Host {
-	results := make(chan *Host)
+	hosts := make(chan *Host)
 	sem := make(chan struct{}, maxProcs)
 
 	go func() {
 		for packet := range packets {
 			sem <- struct{}{}
-			go func() {
-				host := processARPPacket(packet)
-				if host != nil {
-					results <- host
+			go func(p gopacket.Packet) {
+				if host := parseARPPacket(p); host != nil {
+					hosts <- host
 				}
 				<-sem
-			}()
+			}(packet)
 		}
-		close(sem)
-		close(results)
+		close(hosts)
 	}()
 
-	return results
+	return hosts
 }
 
-func processARPPacket(packet gopacket.Packet) *Host {
-	ARPLayer := packet.Layer(layers.LayerTypeARP)
-	if ARPLayer == nil {
+func parseARPPacket(packet gopacket.Packet) *Host {
+	arpLayer := packet.Layer(layers.LayerTypeARP)
+	if arpLayer == nil {
 		return nil
 	}
 
-	ARP := ARPLayer.(*layers.ARP)
-
-	if ARP.Operation != layers.ARPReply {
+	arp := arpLayer.(*layers.ARP)
+	if arp.Operation != layers.ARPReply {
 		return nil
 	}
 
 	return &Host{
-		IP:   ARP.SourceProtAddress,
+		IP:   arp.SourceProtAddress,
 		RTT:  time.Since(packet.Metadata().Timestamp),
-		Info: fmt.Sprintf("HW address: %s", net.HardwareAddr(ARP.SourceHwAddress).String()),
+		Info: fmt.Sprintf("HW address: %s", net.HardwareAddr(arp.SourceHwAddress)),
 	}
 }
 
-func createARPPacket(ifaceMAC net.HardwareAddr, ifaceIP, targetIP net.IP) ([]byte, error) {
-	// Ethernet layer (broadcast)
-	ethernetLayer := &layers.Ethernet{
-		SrcMAC:       ifaceMAC,
-		DstMAC:       net.HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+func createARPPacket(srcMAC net.HardwareAddr, srcIP, dstIP net.IP) ([]byte, error) {
+	eth := &layers.Ethernet{
+		SrcMAC:       srcMAC,
+		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
 		EthernetType: layers.EthernetTypeARP,
 	}
 
-	// ARP layer (request for target IP)
-	arpLayer := &layers.ARP{
+	arp := &layers.ARP{
 		AddrType:          layers.LinkTypeEthernet,
 		Protocol:          layers.EthernetTypeIPv4,
 		HwAddressSize:     6,
 		ProtAddressSize:   4,
 		Operation:         layers.ARPRequest,
-		SourceHwAddress:   ifaceMAC,
-		SourceProtAddress: ifaceIP.To4(),
+		SourceHwAddress:   srcMAC,
+		SourceProtAddress: srcIP.To4(),
 		DstHwAddress:      make([]byte, 6),
-		DstProtAddress:    targetIP.To4(),
+		DstProtAddress:    dstIP.To4(),
 	}
 
-	// Serialize packet
-	options := gopacket.SerializeOptions{
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{
 		FixLengths:       true,
 		ComputeChecksums: true,
 	}
-	buf := gopacket.NewSerializeBuffer()
 
-	if err := gopacket.SerializeLayers(buf, options, ethernetLayer, arpLayer); err != nil {
-		return nil, fmt.Errorf("packet serialization failed: %w", err)
+	if err := gopacket.SerializeLayers(buf, opts, eth, arp); err != nil {
+		return nil, fmt.Errorf("ARP packet creation failed: %w", err)
 	}
-
 	return buf.Bytes(), nil
+}
+
+func sortResults(hosts []*Host) {
+	sort.Slice(hosts, func(i, j int) bool {
+		return bytes.Compare(hosts[i].IP, hosts[j].IP) < 0
+	})
 }
