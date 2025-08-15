@@ -5,16 +5,25 @@ import (
 	"net"
 )
 
-// GetHostsFromSubnet enumerates all usable IPs in a subnet
-func GetHostsFromSubnet(targetCIDR string) ([]net.IP, error) {
-	targetIp, targetNet, err := net.ParseCIDR(targetCIDR)
+// GetHostsFromAddr enumerates all usable IPs in a subnet or a singular address
+func GetHostsFromAddr(targetAddr string) ([]net.IP, error) {
+	if ip := net.ParseIP(targetAddr); ip != nil {
+		return []net.IP{ip}, nil
+	}
+
+	subnetIp, subnet, err := net.ParseCIDR(targetAddr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid CIDR format: %w", err)
+		return nil, err
 	}
 
 	ips := make([]net.IP, 0)
-	for ip := targetIp.Mask(targetNet.Mask); targetNet.Contains(ip); incrementIP(ip) {
+	for ip := subnetIp.Mask(subnet.Mask); subnet.Contains(ip); incrementIP(ip) {
 		ips = append(ips, net.ParseIP(ip.String()))
+	}
+
+	ones, bits := subnet.Mask.Size()
+	if bits == ones || bits-ones == 1 {
+		return ips, nil
 	}
 	return ips[1 : len(ips)-1], nil
 }
@@ -35,11 +44,11 @@ func ParseIPOrCIDR(target string) (net.IP, *net.IPNet, error) {
 		return ip, nil, nil
 	}
 
-	ip, net, err := net.ParseCIDR(target)
+	ip, subnet, err := net.ParseCIDR(target)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid IP/CIDR format: %w", err)
 	}
-	return ip, net, nil
+	return ip, subnet, nil
 }
 
 // AreSubnetsOverlapping checks if two subnets overlap
@@ -47,21 +56,11 @@ func AreSubnetsOverlapping(net1, net2 *net.IPNet) bool {
 	return net1.Contains(net2.IP) || net2.Contains(net1.IP)
 }
 
-// BroadcastIPv4Address return a broadcast address for a specified subnetwork
-func BroadcastIPv4Address(ip net.IP, mask net.IPMask) net.IP {
-	ip = ip.To4()
-	if ip == nil {
-		return nil
-	}
-
-	network := make(net.IP, len(ip))
-	for i := range ip {
-		network[i] = ip[i] & mask[i]
-	}
-
-	broadcast := make(net.IP, len(ip))
-	for i := range network {
-		broadcast[i] = network[i] | ^mask[i]
+// BroadcastIPAddress return a broadcast address for a specified subnetwork
+func BroadcastIPAddress(subnet *net.IPNet) net.IP {
+	broadcast := make(net.IP, len(subnet.IP))
+	for i := range subnet.IP {
+		broadcast[i] = subnet.IP[i] | ^subnet.Mask[i]
 	}
 
 	return broadcast
