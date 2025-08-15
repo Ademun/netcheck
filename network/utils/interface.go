@@ -84,13 +84,96 @@ func filterInterfaces(interfaces []pcap.Interface) []pcap.Interface {
 	return filtered
 }
 
+func PcapToSys(pcapIface *pcap.Interface) (*net.Interface, error) {
+	sysIfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("system interface enumeration failed: %w", err)
+	}
+
+	for _, sysIface := range sysIfaces {
+		if sysIface.Name == pcapIface.Name {
+			return &sysIface, nil
+		}
+	}
+
+	sysIPs := make(map[*net.Interface][]net.IP)
+	for _, sysIface := range sysIfaces {
+		addrs, err := sysIface.Addrs()
+		if err != nil {
+			continue
+		}
+		ips := make([]net.IP, 0, len(addrs))
+		for _, addr := range addrs {
+			if ipNet, ok := addr.(*net.IPNet); ok {
+				ips = append(ips, ipNet.IP)
+			}
+		}
+		sysIPs[&sysIface] = ips
+	}
+
+	pcapIPs := make([]net.IP, len(pcapIface.Addresses))
+	for i, addr := range pcapIface.Addresses {
+		pcapIPs[i] = addr.IP
+	}
+
+	for iface, addrs := range sysIPs {
+		if ipSetEqual(pcapIPs, addrs) {
+			return iface, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no interface found for %s", pcapIface.Name)
+}
+
+func SysToPcap(sysIface *net.Interface) (*pcap.Interface, error) {
+	pcapDevices, err := pcap.FindAllDevs()
+	if err != nil {
+		return nil, fmt.Errorf("PCAP device enumeration failed: %v", err)
+	}
+
+	for _, pcapDevice := range pcapDevices {
+		if pcapDevice.Name == sysIface.Name {
+			return &pcapDevice, nil
+		}
+	}
+
+	pcapIPs := make(map[*pcap.Interface][]net.IP)
+	for _, pcapDevice := range pcapDevices {
+		ips := make([]net.IP, len(pcapDevice.Addresses))
+		for i, addr := range pcapDevice.Addresses {
+			ips[i] = addr.IP
+		}
+		pcapIPs[&pcapDevice] = ips
+	}
+
+	sysIPs := make([]net.IP, 0)
+	addrs, err := sysIface.Addrs()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get interface addresses for %s: %v", sysIface.Name, err)
+	}
+
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok {
+			sysIPs = append(sysIPs, ipNet.IP)
+		}
+	}
+
+	for pcapIface, addrs := range pcapIPs {
+		if ipSetEqual(sysIPs, addrs) {
+			return pcapIface, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no interface found for %s", sysIface.Name)
+}
+
 type sysIfaceInfo struct {
 	ips []net.IP
 	mac net.HardwareAddr
 }
 
-// GetInterfaceMAC retrieves MAC address for a pcap interface
-func GetInterfaceMAC(pcapName string) (net.HardwareAddr, error) {
+// GetPcapInterfaceMAC retrieves MAC address for a pcap interface
+func GetPcapInterfaceMAC(pcapName string) (net.HardwareAddr, error) {
 	devices, err := pcap.FindAllDevs()
 	if err != nil {
 		return nil, fmt.Errorf("PCAP device enumeration failed: %w", err)
