@@ -16,9 +16,7 @@ import (
 )
 
 const (
-	maxProcs       = 10
-	defaultDstPort = 80
-	defaultSrcPort = 443
+	maxProcs = 10
 )
 
 type baseDiscoverer struct {

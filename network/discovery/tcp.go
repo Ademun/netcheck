@@ -13,17 +13,29 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
+const (
+	TcpDiscoverSyn = iota
+	TcpDiscoverAck
+)
+
+const (
+	defaultDstPort = 80
+	defaultSrcPort = 80
+)
+
 type TcpDiscoverer struct {
 	baseDiscoverer
+	tcpFlag int
 }
 
-func NewTcpDiscoverer() *TcpDiscoverer {
+func NewTcpDiscoverer(tcpFlag int) *TcpDiscoverer {
 	return &TcpDiscoverer{
 		baseDiscoverer: baseDiscoverer{
 			interPacketDelay: 2 * time.Millisecond,
 			finalDelay:       5 * time.Second,
 			maxRetries:       2,
 		},
+		tcpFlag: tcpFlag,
 	}
 }
 
@@ -66,6 +78,7 @@ func (d *TcpDiscoverer) Discover(ips []net.IP) ([]*Host, error) {
 			gatewayMAC,
 			diskSetup.srcIP,
 			ip,
+			d.tcpFlag,
 		)
 	}
 
@@ -118,7 +131,7 @@ func parseTCPPacket(packet gopacket.Packet, ips []net.IP) *Host {
 	}
 }
 
-func CreateTCPPacket(srcMAC, dstMAC net.HardwareAddr, srcIP, dstIP net.IP) ([]byte, error) {
+func CreateTCPPacket(srcMAC, dstMAC net.HardwareAddr, srcIP, dstIP net.IP, tcpFlag int) ([]byte, error) {
 	eth := &layers.Ethernet{
 		SrcMAC:       srcMAC,
 		DstMAC:       dstMAC,
@@ -133,10 +146,21 @@ func CreateTCPPacket(srcMAC, dstMAC net.HardwareAddr, srcIP, dstIP net.IP) ([]by
 		DstIP:    dstIP,
 	}
 
+	var isSyn, isAck bool
+	switch tcpFlag {
+	case TcpDiscoverSyn:
+		isSyn = true
+	case TcpDiscoverAck:
+		isAck = true
+	default:
+		return nil, fmt.Errorf("invalid tcp flag: %d", tcpFlag)
+	}
+
 	tcp := &layers.TCP{
 		SrcPort: defaultSrcPort,
 		DstPort: defaultDstPort,
-		SYN:     true,
+		SYN:     isSyn,
+		ACK:     isAck,
 		Window:  14600,
 	}
 

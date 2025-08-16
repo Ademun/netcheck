@@ -65,7 +65,7 @@ Use only on networks you own or have explicit permission to scan!`,
 			os.Exit(1)
 		}
 
-		disc := discovery.NewTcpDiscoverer()
+		disc := discovery.NewArpDiscoverer()
 		hosts, err := disc.Discover(ips)
 		if err != nil {
 			fmt.Println(err)
@@ -88,7 +88,7 @@ Use only on networks you own or have explicit permission to scan!`,
 		})
 
 		end := time.Now()
-		print(scanResults, v)
+		printReport(scanResults, v)
 		manageReport(out, ip, scanResults, start, end)
 	},
 }
@@ -106,7 +106,7 @@ func init() {
 	rootCmd.Flags().StringP("output", "o", "", "Saves report to file: json | csv")
 }
 
-func print(results []network.Result, verbose bool) {
+func printReport(results []network.Result, verbose bool) {
 	slices.SortFunc(results, func(a, b network.Result) int {
 		return network.ConvPort(a.Port) - network.ConvPort(b.Port)
 	})
