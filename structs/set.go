@@ -2,44 +2,44 @@ package structs
 
 import "sync"
 
-type Set struct {
-	elements map[string]struct{}
+type Set[T comparable] struct {
+	elements map[T]struct{}
 	lock     sync.RWMutex
 }
 
-func NewSet() *Set {
-	return &Set{elements: make(map[string]struct{})}
+func NewSet[T comparable]() *Set[T] {
+	return &Set[T]{elements: make(map[T]struct{})}
 }
 
-func (s *Set) Add(value string) {
+func (s *Set[T]) Add(value T) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.elements[value] = struct{}{}
 }
 
-func (s *Set) Remove(value string) {
+func (s *Set[T]) Remove(value T) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	delete(s.elements, value)
 }
 
-func (s *Set) Contains(value string) bool {
+func (s *Set[T]) Contains(value T) bool {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	_, ok := s.elements[value]
 	return ok
 }
 
-func (s *Set) Len() int {
+func (s *Set[T]) Len() int {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	return len(s.elements)
 }
 
-func (s *Set) List() []string {
+func (s *Set[T]) List() []T {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
-	list := make([]string, 0, len(s.elements))
+	list := make([]T, 0, len(s.elements))
 	for v := range s.elements {
 		list = append(list, v)
 	}

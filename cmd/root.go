@@ -65,7 +65,7 @@ Use only on networks you own or have explicit permission to scan!`,
 			os.Exit(1)
 		}
 
-		disc := discovery.NewArpDiscoverer()
+		disc := discovery.NewTcpDiscoverer()
 		hosts, err := disc.Discover(ips)
 		if err != nil {
 			fmt.Println(err)

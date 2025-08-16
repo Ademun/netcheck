@@ -1,130 +1,69 @@
 package discovery
 
 import (
-	"errors"
 	"fmt"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/ademun/netcheck/network/routing"
 	"github.com/ademun/netcheck/network/utils"
+	"github.com/ademun/netcheck/structs"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 )
 
 type ArpDiscoverer struct {
-	interPacketDelay time.Duration
-	finalDelay       time.Duration
-	maxRetries       int
+	baseDiscoverer
 }
 
 func NewArpDiscoverer() *ArpDiscoverer {
 	return &ArpDiscoverer{
-		interPacketDelay: time.Millisecond * 8,
-		finalDelay:       time.Second * 2,
-		maxRetries:       2,
+		baseDiscoverer{
+			interPacketDelay: 8 * time.Millisecond,
+			finalDelay:       2 * time.Second,
+			maxRetries:       2,
+		},
 	}
 }
 
 func (d ArpDiscoverer) Discover(ips []net.IP) ([]*Host, error) {
-	rtable, err := routing.GetRoutingTable()
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("no IPs provided")
+	}
+
+	discSetup, err := getDiscoverySetup(ips[0])
 	if err != nil {
-		return nil, fmt.Errorf("failed to get routing table: %w", err)
+		return nil, err
 	}
+	defer discSetup.handle.Close()
 
-	route := routing.FindRoute(ips[0], rtable)
-	if route == nil {
-		return nil, errors.New("no route found for target IP")
-	}
-
-	pcapIface, err := utils.SysToPcap(route.Iface)
-	if err != nil {
-		return nil, fmt.Errorf("interface conversion failed: %w", err)
-	}
-
-	ifaceIP, _, err := utils.GetPcapInterfaceIPv4NetInfo(pcapIface)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get interface IP info: %w", err)
-	}
-
-	handle, err := utils.OpenPCAPHandle(pcapIface.Name, false)
-	if err != nil {
-		return nil, fmt.Errorf("pcap handle open failed: %w", err)
-	}
-	defer handle.Close()
-
-	packetSource, err := utils.PcapListenPackets(handle, "arp")
+	packetSource, err := utils.PcapListenPackets(discSetup.handle, "arp")
 	if err != nil {
 		return nil, fmt.Errorf("packet listener failed: %w", err)
 	}
 
-	hostChan := processArpPackets(packetSource.Packets())
+	hostChan := processPackets(packetSource.Packets(), parseARPPacket)
+	available := structs.NewSet[string]()
 	results := make([]*Host, 0)
-	statusMap := sync.Map{}
-
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for host := range hostChan {
-			if _, found := statusMap.LoadOrStore(host.IP.String(), true); !found {
-				results = append(results, host)
-			}
-		}
-	}()
 
-	for range d.maxRetries {
-		for _, ip := range ips {
-			if _, responded := statusMap.Load(ip.String()); responded {
-				continue
-			}
+	go collectResults(hostChan, &results, available, wg)
 
-			packet, err := createARPPacket(route.Iface.HardwareAddr, ifaceIP, ip)
-			if err != nil {
-				continue
-			}
-
-			if err := utils.PcapSendPacket(handle, packet); err != nil {
-				return nil, fmt.Errorf("ARP packet send failed: %w", err)
-			}
-			time.Sleep(d.interPacketDelay)
-		}
-		time.Sleep(d.finalDelay)
+	createPacket := func(ip net.IP) ([]byte, error) {
+		return createARPPacket(discSetup.srcMAC, discSetup.srcIP, ip)
 	}
-	handle.Close()
 
-	// Add local interface to results
-	results = append(results, &Host{
-		IP:   ifaceIP,
-		RTT:  0,
-		Info: fmt.Sprintf("HW address: %s", route.Iface.HardwareAddr),
-	})
+	if err := d.sendPackets(discSetup.handle, ips, available, createPacket); err != nil {
+		return nil, err
+	}
+
+	discSetup.handle.Close()
 
 	wg.Wait()
+	results = append(results, createLocalHost(discSetup))
 	sortResults(results)
 	return results, nil
-}
-
-func processArpPackets(packets <-chan gopacket.Packet) <-chan *Host {
-	hosts := make(chan *Host)
-	sem := make(chan struct{}, maxProcs)
-
-	go func() {
-		for packet := range packets {
-			sem <- struct{}{}
-			go func(p gopacket.Packet) {
-				if host := parseARPPacket(p); host != nil {
-					hosts <- host
-				}
-				<-sem
-			}(packet)
-		}
-		close(hosts)
-	}()
-
-	return hosts
 }
 
 func parseARPPacket(packet gopacket.Packet) *Host {
@@ -164,24 +103,13 @@ func createARPPacket(srcMAC net.HardwareAddr, srcIP, dstIP net.IP) ([]byte, erro
 		DstProtAddress:    dstIP.To4(),
 	}
 
-	buf := gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{
-		FixLengths:       true,
-		ComputeChecksums: true,
-	}
-
-	if err := gopacket.SerializeLayers(buf, opts, eth, arp); err != nil {
-		return nil, fmt.Errorf("ARP packet creation failed: %w", err)
-	}
-	return buf.Bytes(), nil
+	return serializeLayers(eth, arp)
 }
 
-func extractMAC(host []*Host) (net.HardwareAddr, error) {
-	split := strings.Split(host[0].Info, " ")
-	macString := split[len(split)-1]
-	mac, err := net.ParseMAC(macString)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse MAC address: %w", err)
+func createLocalHost(discSetup *discoverySetup) *Host {
+	return &Host{
+		IP:   discSetup.srcIP,
+		RTT:  0,
+		Info: fmt.Sprintf("HW address: %s", discSetup.srcMAC),
 	}
-	return mac, nil
 }
